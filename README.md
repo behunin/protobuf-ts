@@ -1,5 +1,5 @@
 # protobuf-ts
-Protoc plugin to generate typescript client code from .proto files
+Protoc plugin to generate typescript client code from .proto files.
 
 # Build
 
