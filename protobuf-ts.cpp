@@ -37,73 +37,23 @@
 #include <map>
 #include <string>
 
-#include <stdarg.h> // For va_list and related operations
-#include <stdio.h>  // MSVC requires this for _vsnprintf
-
 #include "protobuf-ts.h"
 #include "scc.h"
 
 namespace ts
 {
-
-  string StringPrintf(const char *format, ...)
+  template <typename... Args>
+  std::string StringPrintf(const char *format, Args... args)
   {
-    va_list ap;
-    va_start(ap, format);
-    string result;
-    // First try with a small fixed size buffer
-    static const std::size_t kSpaceLength = 1024;
-    char space[kSpaceLength];
-
-    // It's possible for methods that use a va_list to invalidate
-    // the data in it upon use.  The fix is to make a copy
-    // of the structure before using it and use that copy instead.
-    va_list backup_ap;
-    va_copy(backup_ap, ap);
-    result = vsnprintf(space, kSpaceLength, format, backup_ap);
-    va_end(backup_ap);
-
-    if (result.size() < kSpaceLength)
+    int size_s = std::snprintf(nullptr, 0, format, args...) + 1;
+    if (size_s <= 0)
     {
-      if (result.size() >= 0)
-      {
-        // Normal case -- everything fit.
-        return result.append(space);
-      }
-
-#ifdef _MSC_VER
-      // Error or MSVC running out of space.  MSVC 8.0 and higher
-      // can be asked about space needed with the special idiom below:
-      va_copy(backup_ap, ap);
-      result = vsnprintf(nullptr, 0, format, backup_ap);
-      va_end(backup_ap);
-#endif
-
-      if (result.size() < 0)
-      {
-        // Just an error.
-        return "error";
-      }
+      return "Error during formatting.";
     }
-
-    // Increase the buffer size to the size requested by vsnprintf,
-    // plus one for the closing \0.
-    size_t length = result.size() + 1;
-    char *buf = new char[length];
-
-    // Restore the va_list before we use it again
-    va_copy(backup_ap, ap);
-    result = vsnprintf(buf, length, format, backup_ap);
-    va_end(backup_ap);
-
-    if (result.size() >= 0 && result.size() < length)
-    {
-      // It fit
-      result.append(buf);
-    }
-    delete[] buf;
-    va_end(ap);
-    return result;
+    auto size = static_cast<size_t>(size_s);
+    std::unique_ptr<char[]> buf(new char[size]);
+    std::snprintf(buf.get(), size, format, args...);
+    return std::string(buf.get(), buf.get() + size - 1);
   }
 
   bool StrEndsWith(StringPiece sp, StringPiece x)
@@ -289,7 +239,7 @@ namespace ts
     case FieldDescriptor::TYPE_MESSAGE:
       return GetMessagePath(field->message_type(), false);
     default:
-      return "";
+      return "NaN";
     }
   }
 
@@ -1604,8 +1554,7 @@ namespace ts
         return false;
       }
     }
-    else if (options.output_mode() ==
-             GeneratorOptions::kOneOutputFilePerService)
+    else if (options.output_mode() == GeneratorOptions::kOneOutputFilePerService)
     {
       std::map<std::string, std::string> vars;
       std::set<const Descriptor *> have_printed;
